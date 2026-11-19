@@ -114,6 +114,11 @@
   var cards = Array.prototype.slice.call(grid.querySelectorAll('.project'));
   if (cards.length < 2) return;
 
+  // Com movimento liberado, as capas passam sozinhas em loop, como a faixa de conceitos.
+  // Com "reduzir movimento" ligado, fica o carrossel manual com bolinhas e setas.
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) { autoScroll(grid, cards); return; }
+
   function startOf(card) {
     return card.offsetLeft - grid.offsetLeft - parseFloat(getComputedStyle(grid).paddingLeft);
   }
@@ -170,3 +175,77 @@
   window.addEventListener('resize', update);
   update();
 })();
+
+/* Capas dos clientes passando sozinhas, em loop contínuo.
+   Para quando o mouse está em cima, quando alguém toca/arrasta ou navega pelo teclado,
+   e volta a andar sozinha logo depois. */
+function autoScroll(grid, cards) {
+  var SPEED = 40;          // pixels por segundo
+  var RESUME_AFTER = 2500; // ms parada depois de um toque/arrasto
+  grid.classList.add('is-auto');
+
+  // cópias dos cards para o loop não ter fim (escondidas de leitores de tela e do teclado)
+  var loopWidth = 0;
+  function build() {
+    grid.querySelectorAll('[data-clone]').forEach(function (n) { n.remove(); });
+    var gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    var first = cards[0].offsetLeft;
+    var last = cards[cards.length - 1];
+    loopWidth = last.offsetLeft + last.offsetWidth + gap - first;
+    var copies = Math.ceil(grid.clientWidth / loopWidth) + 1;
+    for (var c = 0; c < copies; c++) {
+      cards.forEach(function (card) {
+        var clone = card.cloneNode(true);
+        clone.setAttribute('aria-hidden', 'true');
+        clone.setAttribute('tabindex', '-1');
+        clone.setAttribute('data-clone', '');
+        grid.appendChild(clone);
+      });
+    }
+  }
+
+  var pos = 0, last = 0, hover = false, focus = false, held = false, visible = true, timer;
+  function paused() { return hover || focus || held || !visible; }
+
+  function frame(now) {
+    var dt = last ? Math.min(now - last, 100) / 1000 : 0;
+    last = now;
+    if (!paused() && loopWidth) {
+      pos += SPEED * dt;
+      if (pos >= loopWidth) pos -= loopWidth;
+      grid.scrollLeft = pos;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // quando a pessoa mexe, a posição dela vira o novo ponto de partida
+  function sync() {
+    pos = grid.scrollLeft;
+    if (loopWidth && pos >= loopWidth) { pos -= loopWidth; grid.scrollLeft = pos; }
+  }
+  function hold() { held = true; clearTimeout(timer); }
+  function release() {
+    clearTimeout(timer);
+    timer = setTimeout(function () { sync(); held = false; }, RESUME_AFTER);
+  }
+
+  grid.addEventListener('mouseenter', function () { hover = true; });
+  grid.addEventListener('mouseleave', function () { sync(); hover = false; });
+  grid.addEventListener('focusin', function () { focus = true; });
+  grid.addEventListener('focusout', function () { sync(); focus = false; });
+  grid.addEventListener('touchstart', hold, { passive: true });
+  grid.addEventListener('touchend', release, { passive: true });
+  grid.addEventListener('wheel', function () { hold(); release(); }, { passive: true });
+  grid.addEventListener('scroll', function () { if (paused()) sync(); }, { passive: true });
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+    }).observe(grid);
+  }
+
+  var rt;
+  build();
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { build(); sync(); }, 150); });
+  requestAnimationFrame(frame);
+}

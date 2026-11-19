@@ -817,3 +817,6 @@ a.project:hover .project-meta h3 { color: var(--wine); }
   .nav-links { gap: 6px; }
   .nav-links a { font-size: 0.66rem; }
 }
+
+/* Capas dos clientes passando sozinhas (ativado pelo script.js) */
+.projects-grid.is-auto { scroll-snap-type: none; scroll-behavior: auto; }
